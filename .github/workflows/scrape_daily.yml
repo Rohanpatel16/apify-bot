@@ -1,11 +1,17 @@
 name: 24H LinkedIn Lead Extractor & Analytics
 
 on:
-  workflow_dispatch: # Manual one-click execution from GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      limit_queries:
+        description: 'Number of queries to run (0 = all queries in sheet)'
+        required: false
+        default: '0'
 
 jobs:
   scrape-and-sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
 
     steps:
       - name: Checkout Repository
@@ -26,6 +32,7 @@ jobs:
         env:
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          LIMIT_QUERIES: ${{ github.event.inputs.limit_queries || '0' }}
         run: |
           python main.py
 
@@ -37,4 +44,5 @@ jobs:
           path: |
             leads_database.csv
             daily_analytics.csv
+          if-no-files-found: ignore
           retention-days: 30

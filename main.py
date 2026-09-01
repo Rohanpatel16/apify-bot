@@ -274,5 +274,5 @@ def run_pipeline(limit_queries: int = 0):
 
 
 if __name__ == "__main__":
-    # Runs all 62 queries when triggered by GitHub Actions or local CLI
-    run_pipeline(limit_queries=0)
+    limit = int(os.getenv("LIMIT_QUERIES", "0"))
+    run_pipeline(limit_queries=limit)
