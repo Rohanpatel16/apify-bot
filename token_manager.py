@@ -1,7 +1,16 @@
+import json
 import time
-import httpx
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+
 from apify_client import ApifyClient
 
 
@@ -87,11 +96,23 @@ class TokenManager:
             try:
                 headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
                 
-                # 1. Query limits endpoint (gives max allowed USD & current monthlyUsageUsd)
-                resp = httpx.get("https://api.apify.com/v2/users/me/limits", headers=headers, timeout=10.0)
+                # Fetch limits from Apify REST API
+                if HTTPX_AVAILABLE:
+                    resp = httpx.get("https://api.apify.com/v2/users/me/limits", headers=headers, timeout=10.0)
+                    status_code = resp.status_code
+                    resp_json = resp.json() if status_code == 200 else {}
+                else:
+                    req = urllib.request.Request("https://api.apify.com/v2/users/me/limits", headers=headers)
+                    try:
+                        with urllib.request.urlopen(req, timeout=10.0) as response:
+                            status_code = response.getcode()
+                            resp_json = json.loads(response.read().decode("utf-8"))
+                    except urllib.error.HTTPError as he:
+                        status_code = he.code
+                        resp_json = {}
                 
-                if resp.status_code == 200:
-                    payload = resp.json().get("data", {})
+                if status_code == 200:
+                    payload = resp_json.get("data", {})
                     limits_data = payload.get("limits", {})
                     current_data = payload.get("current", {})
                     
@@ -103,18 +124,17 @@ class TokenManager:
                     record["status"] = "ACTIVE"
                     record["notes"] = f"Used: ${used_usd:.4f} / ${max_usd:.2f}"
                     print(f"  [OK] {record['account_name']}: ${record['available_balance_usd']:.4f} remaining (Used: ${used_usd:.4f})")
-                elif resp.status_code in (401, 403):
+                elif status_code in (401, 403):
                     record["status"] = "INVALID"
                     record["notes"] = "Invalid or expired token"
                     print(f"  [ERR] {record['account_name']}: Invalid Token")
-                elif resp.status_code == 429:
+                elif status_code == 429:
                     record["status"] = "EXHAUSTED"
                     record["notes"] = "Rate limited / Quota exhausted"
                     print(f"  [ERR] {record['account_name']}: Rate Limited")
                 else:
-                    # Fallback to apify-client
                     client = ApifyClient(token)
-                    user_info = client.user("me").get()
+                    client.user("me").get()
                     record["status"] = "ACTIVE"
                     record["notes"] = "Healthy"
                     print(f"  [OK] {record['account_name']}: Active")
