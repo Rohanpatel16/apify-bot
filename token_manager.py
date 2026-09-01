@@ -1,4 +1,5 @@
 import time
+import httpx
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from apify_client import ApifyClient
@@ -6,8 +7,8 @@ from apify_client import ApifyClient
 
 def safe_get(obj, key, default=None):
     """
-    Safely retrieves a value whether obj is a dictionary or a typed object/dataclass
-    (e.g., UserPrivateInfo, ActorRun, etc.), checking both camelCase and snake_case.
+    Safely retrieves a value whether obj is a dictionary or a typed object/dataclass,
+    checking both camelCase and snake_case.
     """
     if obj is None:
         return default
@@ -33,8 +34,8 @@ def safe_get(obj, key, default=None):
 class TokenManager:
     """
     Manages a pool of unlimited Apify API tokens.
-    Handles live balance queries, highest-balance selection, failover rotation,
-    and status tracking (including password preservation).
+    Queries live real-time balances from Apify limits and usage endpoints,
+    ranks tokens to pick the highest available credit, and preserves passwords.
     """
 
     def __init__(self, token_records: Optional[List[Dict]] = None):
@@ -73,30 +74,51 @@ class TokenManager:
             })
 
     def sync_live_balances(self):
-        """Queries Apify API for each active token to fetch true live remaining balance."""
-        print(f"\n[TOKEN POOL] Checking live balances for {len(self.tokens)} token(s)...")
+        """
+        Queries Apify REST API (https://api.apify.com/v2/users/me/limits) for live,
+        real-time spending, monthly limits, and exact remaining USD credit.
+        """
+        print(f"\n[TOKEN POOL] Querying live balances for {len(self.tokens)} token(s)...")
         for record in self.tokens:
             token = record["api_token"]
             if not token or not token.startswith("apify_api_"):
                 continue
 
             try:
-                client = ApifyClient(token)
-                user_info = client.user("me").get()
-                if user_info:
-                    plan = safe_get(user_info, "plan", {}) or {}
-                    usd_limit = safe_get(plan, "monthlyUsageLimitUsd", 5.0) or 5.0
+                headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+                
+                # 1. Query limits endpoint (gives max allowed USD & current monthlyUsageUsd)
+                resp = httpx.get("https://api.apify.com/v2/users/me/limits", headers=headers, timeout=10.0)
+                
+                if resp.status_code == 200:
+                    payload = resp.json().get("data", {})
+                    limits_data = payload.get("limits", {})
+                    current_data = payload.get("current", {})
                     
-                    usage = safe_get(user_info, "usage", {}) or {}
-                    current_cycle = safe_get(usage, "currentBillingCycle", {}) or {}
-                    usd_used = safe_get(current_cycle, "monthlyUsageUsd", 0.0) or 0.0
-                    
-                    rem_balance = max(0.0, float(usd_limit) - float(usd_used))
-                    
-                    record["available_balance_usd"] = round(rem_balance, 2)
+                    max_usd = float(limits_data.get("maxMonthlyUsageUsd", 5.0) or 5.0)
+                    used_usd = float(current_data.get("monthlyUsageUsd", 0.0) or 0.0)
+                    remaining_usd = max(0.0, max_usd - used_usd)
+
+                    record["available_balance_usd"] = round(remaining_usd, 4)
                     record["status"] = "ACTIVE"
-                    record["notes"] = f"Plan: {safe_get(plan, 'name', 'Free')} (Healthy)"
-                    print(f"  [OK] {record['account_name']}: ${record['available_balance_usd']:.2f} available")
+                    record["notes"] = f"Used: ${used_usd:.4f} / ${max_usd:.2f}"
+                    print(f"  [OK] {record['account_name']}: ${record['available_balance_usd']:.4f} remaining (Used: ${used_usd:.4f})")
+                elif resp.status_code in (401, 403):
+                    record["status"] = "INVALID"
+                    record["notes"] = "Invalid or expired token"
+                    print(f"  [ERR] {record['account_name']}: Invalid Token")
+                elif resp.status_code == 429:
+                    record["status"] = "EXHAUSTED"
+                    record["notes"] = "Rate limited / Quota exhausted"
+                    print(f"  [ERR] {record['account_name']}: Rate Limited")
+                else:
+                    # Fallback to apify-client
+                    client = ApifyClient(token)
+                    user_info = client.user("me").get()
+                    record["status"] = "ACTIVE"
+                    record["notes"] = "Healthy"
+                    print(f"  [OK] {record['account_name']}: Active")
+
             except Exception as e:
                 err_str = str(e)
                 if "401" in err_str or "Invalid token" in err_str:
@@ -115,7 +137,7 @@ class TokenManager:
         """
         active_tokens = [
             t for t in self.tokens
-            if t["status"] == "ACTIVE" and t.get("available_balance_usd", 0) > 0.05
+            if t["status"] == "ACTIVE" and t.get("available_balance_usd", 0) > 0.01
         ]
 
         if not active_tokens:
@@ -143,12 +165,13 @@ class TokenManager:
         """Formats the internal token list back to 2D rows for Google Sheets."""
         rows = []
         for t in self.tokens:
+            bal = t.get('available_balance_usd', 0.0)
             rows.append([
                 t.get("api_token", ""),
                 t.get("account_name", ""),
                 t.get("password", ""),
                 t.get("status", "ACTIVE"),
-                f"${t.get('available_balance_usd', 0.0):.2f}",
+                f"${bal:.4f}" if isinstance(bal, float) else str(bal),
                 t.get("last_used_at", ""),
                 t.get("notes", ""),
             ])
