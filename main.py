@@ -160,9 +160,10 @@ def run_pipeline(limit_queries: int = 0):
     if sheets.is_connected:
         sheets.sync_token_records(token_manager.export_sheet_rows())
 
-    # 5. Execute Scraper Loop
-    queries_to_run = SEARCH_QUERIES[:limit_queries] if limit_queries > 0 else SEARCH_QUERIES
-    print(f"\n[PIPELINE] Executing {len(queries_to_run)} search queries (24H window)...")
+    # 5. Load Active Search Queries from 'Queries' Google Sheet tab
+    active_queries = sheets.load_queries(default_queries=SEARCH_QUERIES)
+    queries_to_run = active_queries[:limit_queries] if limit_queries > 0 else active_queries
+    print(f"\n[PIPELINE] Executing {len(queries_to_run)} active search queries (24H window)...")
 
     total_posts_found = 0
     total_leads_added = 0

@@ -1,10 +1,11 @@
 /**
- * Google Apps Script for LinkedIn Leads CRM & Apify 50-Token Pool (Safe-Sync & Non-Destructive)
+ * Google Apps Script for LinkedIn Leads CRM & Apify Multi-Token Pool (Safe-Sync & Non-Destructive)
  * 
  * Key Features:
  * - SAFE & NON-DESTRUCTIVE: Never deletes your existing sheets, custom columns, or data rows.
- * - INTELLIGENT SYNC: Only creates missing sheets or missing headers, and preserves all your existing tokens, passwords, and leads.
- * - CUSTOM COLUMN SAFE: You can add your own custom columns anywhere, and this script will never overwrite them.
+ * - DYNAMIC QUERIES: Manages all search queries directly in the 'Queries' tab with enable/disable toggles.
+ * - UNLIMITED TOKENS: Automatically scales to as many Apify tokens as you add.
+ * - CUSTOM COLUMN SAFE: You can add your own custom columns anywhere without them being overwritten.
  */
 
 function onOpen() {
@@ -18,13 +19,13 @@ function onOpen() {
 
 /**
  * Non-destructive setup: Checks and creates any missing sheets or headers.
- * NEVER calls .clear() or .deleteSheet(). Preserves all existing data, tokens, passwords, and custom columns.
+ * Never deletes existing data, tokens, passwords, queries, or custom columns.
  */
 function safeSyncSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
   // -------------------------------------------------------------
-  // 1. TAB: Leads Database (Strict 5 Base Columns + Any Custom Columns)
+  // 1. TAB: Leads Database (Strict 5 Base Columns + Custom Columns)
   // -------------------------------------------------------------
   var leadsSheet = ss.getSheetByName('Leads Database');
   if (!leadsSheet) {
@@ -32,7 +33,6 @@ function safeSyncSheets() {
   }
   
   if (leadsSheet.getLastRow() === 0) {
-    // Only set default headers if the sheet is completely empty
     var leadsHeaders = [['Email', 'Domain', 'Phone Number', 'Name', 'Query']];
     leadsSheet.getRange(1, 1, 1, 5).setValues(leadsHeaders);
     var leadsHeaderRange = leadsSheet.getRange(1, 1, 1, 5);
@@ -49,7 +49,115 @@ function safeSyncSheets() {
   }
 
   // -------------------------------------------------------------
-  // 2. TAB: Settings (Filter Rules - Preserves Custom Filters)
+  // 2. TAB: Queries (Search Queries Managed in Google Sheets)
+  // -------------------------------------------------------------
+  var queriesSheet = ss.getSheetByName('Queries');
+  if (!queriesSheet) {
+    queriesSheet = ss.insertSheet('Queries');
+  }
+
+  if (queriesSheet.getLastRow() === 0) {
+    var queriesHeaders = [['Query', 'City', 'Enabled', 'Notes']];
+    queriesSheet.getRange(1, 1, 1, 4).setValues(queriesHeaders);
+
+    var defaultQueries = [
+      // Bengaluru (6)
+      ['"Hiring" AND "Bengaluru" AND "@"', 'Bengaluru', 'TRUE', 'Active'],
+      ['"Urgent Hiring" AND "Bengaluru" AND "@"', 'Bengaluru', 'TRUE', 'Active'],
+      ['"Immediate Joiner" AND "Bengaluru" AND "@"', 'Bengaluru', 'TRUE', 'Active'],
+      ['"Immediate Joining" AND "Bengaluru" AND "@"', 'Bengaluru', 'TRUE', 'Active'],
+      ['"We\'re Hiring" AND "Bengaluru" AND "@"', 'Bengaluru', 'TRUE', 'Active'],
+      ['"We are hiring" AND "Bengaluru" AND "@"', 'Bengaluru', 'TRUE', 'Active'],
+      
+      // Hyderabad (6)
+      ['"Hiring" AND "Hyderabad" AND "@"', 'Hyderabad', 'TRUE', 'Active'],
+      ['"Urgent Hiring" AND "Hyderabad" AND "@"', 'Hyderabad', 'TRUE', 'Active'],
+      ['"Immediate Joiner" AND "Hyderabad" AND "@"', 'Hyderabad', 'TRUE', 'Active'],
+      ['"Immediate Joining" AND "Hyderabad" AND "@"', 'Hyderabad', 'TRUE', 'Active'],
+      ['"We\'re Hiring" AND "Hyderabad" AND "@"', 'Hyderabad', 'TRUE', 'Active'],
+      ['"We are hiring" AND "Hyderabad" AND "@"', 'Hyderabad', 'TRUE', 'Active'],
+      
+      // Chennai (6)
+      ['"Hiring" AND "Chennai" AND "@"', 'Chennai', 'TRUE', 'Active'],
+      ['"Urgent Hiring" AND "Chennai" AND "@"', 'Chennai', 'TRUE', 'Active'],
+      ['"Immediate Joiner" AND "Chennai" AND "@"', 'Chennai', 'TRUE', 'Active'],
+      ['"Immediate Joining" AND "Chennai" AND "@"', 'Chennai', 'TRUE', 'Active'],
+      ['"We\'re Hiring" AND "Chennai" AND "@"', 'Chennai', 'TRUE', 'Active'],
+      ['"We are hiring" AND "Chennai" AND "@"', 'Chennai', 'TRUE', 'Active'],
+      
+      // Mumbai (6)
+      ['"Hiring" AND "Mumbai" AND "@"', 'Mumbai', 'TRUE', 'Active'],
+      ['"Urgent Hiring" AND "Mumbai" AND "@"', 'Mumbai', 'TRUE', 'Active'],
+      ['"Immediate Joiner" AND "Mumbai" AND "@"', 'Mumbai', 'TRUE', 'Active'],
+      ['"Immediate Joining" AND "Mumbai" AND "@"', 'Mumbai', 'TRUE', 'Active'],
+      ['"We\'re Hiring" AND "Mumbai" AND "@"', 'Mumbai', 'TRUE', 'Active'],
+      ['"We are hiring" AND "Mumbai" AND "@"', 'Mumbai', 'TRUE', 'Active'],
+      
+      // Pune (6)
+      ['"Hiring" AND "Pune" AND "@"', 'Pune', 'TRUE', 'Active'],
+      ['"Urgent Hiring" AND "Pune" AND "@"', 'Pune', 'TRUE', 'Active'],
+      ['"Immediate Joiner" AND "Pune" AND "@"', 'Pune', 'TRUE', 'Active'],
+      ['"Immediate Joining" AND "Pune" AND "@"', 'Pune', 'TRUE', 'Active'],
+      ['"We\'re Hiring" AND "Pune" AND "@"', 'Pune', 'TRUE', 'Active'],
+      ['"We are hiring" AND "Pune" AND "@"', 'Pune', 'TRUE', 'Active'],
+      
+      // Ahmedabad (6)
+      ['"Urgent Hiring" AND "Ahmedabad" AND "@"', 'Ahmedabad', 'TRUE', 'Active'],
+      ['"Immediate Joiner" AND "Ahmedabad" AND "@"', 'Ahmedabad', 'TRUE', 'Active'],
+      ['"Hiring" AND "Ahmedabad" AND "@"', 'Ahmedabad', 'TRUE', 'Active'],
+      ['"We\'re Hiring" AND "Ahmedabad" AND "@"', 'Ahmedabad', 'TRUE', 'Active'],
+      ['"Immediate Joining" AND "Ahmedabad" AND "@"', 'Ahmedabad', 'TRUE', 'Active'],
+      ['"We are hiring" AND "Ahmedabad" AND "@"', 'Ahmedabad', 'TRUE', 'Active'],
+      
+      // Noida (7)
+      ['"Urgent Hiring" AND "Noida" AND "@"', 'Noida', 'TRUE', 'Active'],
+      ['"Immediate Joiner" AND "Noida" AND "@"', 'Noida', 'TRUE', 'Active'],
+      ['"Immediate Joining" AND "Noida" AND "@"', 'Noida', 'TRUE', 'Active'],
+      ['"We\'re Hiring" AND "Noida" AND "@"', 'Noida', 'TRUE', 'Active'],
+      ['"We are hiring" AND "Noida" AND "@"', 'Noida', 'TRUE', 'Active'],
+      ['"Hiring" AND "Noida" AND "@"', 'Noida', 'TRUE', 'Active'],
+      
+      // Delhi (6)
+      ['"Hiring" AND "Delhi" AND "@"', 'Delhi', 'TRUE', 'Active'],
+      ['"Urgent Hiring" AND "Delhi" AND "@"', 'Delhi', 'TRUE', 'Active'],
+      ['"Immediate Joiner" AND "Delhi" AND "@"', 'Delhi', 'TRUE', 'Active'],
+      ['"Immediate Joining" AND "Delhi" AND "@"', 'Delhi', 'TRUE', 'Active'],
+      ['"We\'re Hiring" AND "Delhi" AND "@"', 'Delhi', 'TRUE', 'Active'],
+      ['"We are hiring" AND "Delhi" AND "@"', 'Delhi', 'TRUE', 'Active'],
+      
+      // Gurugram (6)
+      ['"Hiring" AND "Gurugram" AND "@"', 'Gurugram', 'TRUE', 'Active'],
+      ['"Urgent Hiring" AND "Gurugram" AND "@"', 'Gurugram', 'TRUE', 'Active'],
+      ['"Immediate Joiner" AND "Gurugram" AND "@"', 'Gurugram', 'TRUE', 'Active'],
+      ['"Immediate Joining" AND "Gurugram" AND "@"', 'Gurugram', 'TRUE', 'Active'],
+      ['"We\'re Hiring" AND "Gurugram" AND "@"', 'Gurugram', 'TRUE', 'Active'],
+      ['"We are hiring" AND "Gurugram" AND "@"', 'Gurugram', 'TRUE', 'Active'],
+      
+      // New Delhi (6)
+      ['"Hiring" AND "New Delhi" AND "@"', 'New Delhi', 'TRUE', 'Active'],
+      ['"Urgent Hiring" AND "New Delhi" AND "@"', 'New Delhi', 'TRUE', 'Active'],
+      ['"Immediate Joiner" AND "New Delhi" AND "@"', 'New Delhi', 'TRUE', 'Active'],
+      ['"Immediate Joining" AND "New Delhi" AND "@"', 'New Delhi', 'TRUE', 'Active'],
+      ['"We\'re Hiring" AND "New Delhi" AND "@"', 'New Delhi', 'TRUE', 'Active'],
+      ['"We are hiring" AND "New Delhi" AND "@"', 'New Delhi', 'TRUE', 'Active']
+    ];
+
+    queriesSheet.getRange(2, 1, defaultQueries.length, 4).setValues(defaultQueries);
+
+    var queriesHeaderRange = queriesSheet.getRange(1, 1, 1, 4);
+    queriesHeaderRange.setBackground('#009688')
+                      .setFontColor('#FFFFFF')
+                      .setFontWeight('bold')
+                      .setHorizontalAlignment('center');
+    queriesSheet.setFrozenRows(1);
+    queriesSheet.setColumnWidth(1, 380); // Query
+    queriesSheet.setColumnWidth(2, 150); // City
+    queriesSheet.setColumnWidth(3, 100); // Enabled
+    queriesSheet.setColumnWidth(4, 150); // Notes
+  }
+
+  // -------------------------------------------------------------
+  // 3. TAB: Settings (Filter Rules)
   // -------------------------------------------------------------
   var settingsSheet = ss.getSheetByName('Settings');
   if (!settingsSheet) {
@@ -57,7 +165,6 @@ function safeSyncSheets() {
   }
 
   if (settingsSheet.getLastRow() === 0) {
-    // Only pre-fill default filter rules if sheet is brand new
     var settingsHeaders = [['Blocked Domains', 'Rejection Keywords', 'Blocked Suffixes']];
     settingsSheet.getRange(1, 1, 1, 3).setValues(settingsHeaders);
     
@@ -103,7 +210,7 @@ function safeSyncSheets() {
   }
 
   // -------------------------------------------------------------
-  // 3. TAB: Apify_Tokens (50 Token Pool - Preserves Existing Tokens & Passwords)
+  // 4. TAB: Apify_Tokens (Apify Token Pool - Preserves Passwords & Data)
   // -------------------------------------------------------------
   var tokensSheet = ss.getSheetByName('Apify_Tokens');
   if (!tokensSheet) {
@@ -111,14 +218,13 @@ function safeSyncSheets() {
   }
 
   if (tokensSheet.getLastRow() === 0) {
-    // Only populate if sheet is brand new
     var tokenHeaders = [['api_token', 'account_name', 'password', 'status', 'available_balance_usd', 'last_used_at', 'notes']];
     tokensSheet.getRange(1, 1, 1, 7).setValues(tokenHeaders);
 
     var tokenRows = [];
     for (var k = 1; k <= 50; k++) {
       tokenRows.push([
-        '', // Enter your token here or paste into Google Sheet
+        '', // Enter token here
         'Apify Account ' + k,
         '', // Password column
         'ACTIVE',
@@ -142,20 +248,10 @@ function safeSyncSheets() {
     tokensSheet.setColumnWidth(5, 170);
     tokensSheet.setColumnWidth(6, 200);
     tokensSheet.setColumnWidth(7, 200);
-  } else {
-    // If sheet already exists, ensure up to 50 rows exist without overwriting existing data
-    var currentRows = tokensSheet.getLastRow() - 1;
-    if (currentRows < 50) {
-      var missingRows = [];
-      for (var m = currentRows + 1; m <= 50; m++) {
-        missingRows.push(['', 'Apify Account ' + m, '', 'ACTIVE', 5.00, '', 'Ready']);
-      }
-      tokensSheet.getRange(tokensSheet.getLastRow() + 1, 1, missingRows.length, 7).setValues(missingRows);
-    }
   }
 
   // -------------------------------------------------------------
-  // 4. TAB: Daily_Analytics (Preserves All Historical Logs)
+  // 5. TAB: Daily_Analytics (Historical Logs)
   // -------------------------------------------------------------
   var analyticsSheet = ss.getSheetByName('Daily_Analytics');
   if (!analyticsSheet) {
@@ -179,7 +275,7 @@ function safeSyncSheets() {
     }
   }
 
-  SpreadsheetApp.getUi().alert('✅ Safe Sync Completed! All required tabs are active and all existing data/columns have been preserved.');
+  SpreadsheetApp.getUi().alert('✅ Safe Sync Completed! All 5 tabs (Leads, Queries, Settings, Apify_Tokens, Analytics) are active.');
 }
 
 /**

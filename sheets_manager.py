@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Set
 import pandas as pd
 
 try:
+    # pyrefly: ignore [missing-import]
     import gspread
     from google.oauth2.service_account import Credentials
     GSPREAD_AVAILABLE = True
@@ -18,6 +19,7 @@ class SheetsManager:
     - Never deletes existing user sheets, data, or custom columns.
     - Matches headers dynamically by name.
     - Preserves any custom columns added to the right of standard columns.
+    - Dynamically loads search queries, filter settings, tokens, and leads.
     """
 
     SCOPES = [
@@ -55,6 +57,43 @@ class SheetsManager:
             print(f"[SHEETS MANAGER] Warning: Could not connect to Google Sheets ({e}). Falling back to Local Mode.")
             self.is_connected = False
 
+    def load_queries(self, default_queries: Optional[List[str]] = None) -> List[str]:
+        """
+        Loads active search queries from the 'Queries' tab in Google Sheets.
+        Respects the 'Enabled' column (TRUE/FALSE) so users can toggle queries easily.
+        """
+        defaults = default_queries or []
+        if not self.is_connected:
+            return defaults
+
+        try:
+            sheet = self.spreadsheet.worksheet("Queries")
+            data = sheet.get_all_values()
+            if len(data) > 1:
+                headers = [h.strip().lower() for h in data[0]]
+                q_idx = headers.index("query") if "query" in headers else 0
+                en_idx = headers.index("enabled") if "enabled" in headers else 2
+
+                loaded_queries = []
+                for row in data[1:]:
+                    if len(row) > q_idx and row[q_idx].strip():
+                        query_text = row[q_idx].strip()
+                        enabled = True
+                        if len(row) > en_idx and row[en_idx].strip():
+                            en_str = row[en_idx].strip().upper()
+                            if en_str in ("FALSE", "0", "NO", "DISABLED", "OFF"):
+                                enabled = False
+                        if enabled:
+                            loaded_queries.append(query_text)
+
+                if loaded_queries:
+                    print(f"[SHEETS MANAGER] Loaded {len(loaded_queries)} enabled search query/queries from 'Queries' tab.")
+                    return loaded_queries
+        except Exception as e:
+            print(f"[SHEETS MANAGER] Note reading 'Queries' tab ({e}). Using default query list.")
+
+        return defaults
+
     def load_settings(self) -> Dict[str, Set[str]]:
         """Loads filter rules from 'Settings' tab dynamically."""
         default_settings = {
@@ -79,7 +118,6 @@ class SheetsManager:
             sheet = self.spreadsheet.worksheet("Settings")
             data = sheet.get_all_values()
             if len(data) > 1:
-                # Find column indices by header if headers exist
                 headers = [h.strip().lower() for h in data[0]]
                 d_idx = headers.index("blocked domains") if "blocked domains" in headers else 0
                 k_idx = headers.index("rejection keywords") if "rejection keywords" in headers else 1
@@ -137,7 +175,6 @@ class SheetsManager:
         if self.is_connected and token_rows:
             try:
                 sheet = self.spreadsheet.worksheet("Apify_Tokens")
-                # Update only the first 7 standard columns (A to G), leaving any extra user columns untouched
                 sheet.update(range_name=f"A2:G{len(token_rows)+1}", values=token_rows)
                 print("[SHEETS MANAGER] Safely synced token pool to Google Sheet.")
             except Exception as e:
