@@ -25,8 +25,8 @@ load_dotenv()
 # ==============================================================================
 ACTOR_ID = "buIWk2uOUzTmcLsuB"
 POSTED_LIMIT = "24h"
-MAX_POSTS_PER_QUERY = 100
-DELAY_BETWEEN_RUNS_SECONDS = 3
+MAX_POSTS_PER_QUERY = 1000
+DELAY_BETWEEN_RUNS_SECONDS = 2
 
 # 62 Search Queries for major Indian hiring hubs
 SEARCH_QUERIES = [
@@ -172,17 +172,6 @@ def run_pipeline(limit_queries: int = 0):
     for idx, query in enumerate(queries_to_run, start=1):
         print(f"\n[{idx}/{len(queries_to_run)}] Query: {query}")
 
-        # Pick the token with HIGHEST available balance
-        best_token_record = token_manager.get_best_token()
-        if not best_token_record:
-            print("[ERROR] No ACTIVE tokens available in the pool with positive balance!")
-            break
-
-        current_token = best_token_record["api_token"]
-        print(f"  -> Using Token Account: {best_token_record['account_name']} (Bal: ${best_token_record['available_balance_usd']:.2f})")
-
-        client = ApifyClient(current_token)
-
         raw_input = {
             "searchQueries": [query],
             "maxPosts": MAX_POSTS_PER_QUERY,
@@ -199,24 +188,54 @@ def run_pipeline(limit_queries: int = 0):
         run_input = {k: v for k, v in raw_input.items() if v is not None}
 
         query_posts = []
-        try:
-            run = client.actor(ACTOR_ID).call(run_input=run_input)
-            dataset_id = safe_get(run, "defaultDatasetId") or safe_get(run, "default_dataset_id")
-            
-            # Record estimated compute cost
-            usage_usd = float(safe_get(run, "usageTotalUsd", 0.01) or safe_get(run, "usage_total_usd", 0.01) or 0.01)
-            total_cost_usd += usage_usd
-            best_token_record["available_balance_usd"] = max(0.0, best_token_record["available_balance_usd"] - usage_usd)
+        query_success = False
 
-            if dataset_id:
-                query_posts = list(client.dataset(dataset_id).iterate_items())
+        while not query_success:
+            # Pick the token with HIGHEST available balance
+            best_token_record = token_manager.get_best_token()
+            if not best_token_record:
+                print("  [ERROR] No ACTIVE tokens available in the pool with remaining balance! Halting pipeline.")
+                break
 
-        except Exception as e:
-            err_msg = str(e)
-            print(f"  [ERROR] on query '{query}': {err_msg}")
-            if "429" in err_msg or "quota" in err_msg.lower() or "401" in err_msg:
-                token_manager.mark_exhausted(current_token, "Quota Exceeded")
-            continue
+            current_token = best_token_record["api_token"]
+            print(f"  -> Using Token Account: '{best_token_record['account_name']}' (Bal: ${best_token_record['available_balance_usd']:.4f})")
+
+            client = ApifyClient(current_token)
+
+            try:
+                run = client.actor(ACTOR_ID).call(run_input=run_input)
+                dataset_id = safe_get(run, "defaultDatasetId") or safe_get(run, "default_dataset_id")
+                
+                # Record estimated compute cost
+                usage_usd = float(safe_get(run, "usageTotalUsd", 0.01) or safe_get(run, "usage_total_usd", 0.01) or 0.01)
+                total_cost_usd += usage_usd
+                best_token_record["available_balance_usd"] = max(0.0, best_token_record["available_balance_usd"] - usage_usd)
+
+                if dataset_id:
+                    query_posts = list(client.dataset(dataset_id).iterate_items())
+
+                query_success = True
+
+            except Exception as e:
+                err_msg = str(e)
+                print(f"  [ERROR] Token '{best_token_record['account_name']}' failed on query '{query}': {err_msg}")
+                
+                # Check for payment/quota/permission/rate-limit errors
+                is_exhausted_or_forbidden = (
+                    any(code in err_msg for code in ["401", "402", "403", "429"]) or
+                    any(k in err_msg.lower() for k in ["quota", "limit", "payment", "credit", "balance", "forbidden", "unauthorized", "exhausted"])
+                )
+
+                if is_exhausted_or_forbidden:
+                    token_manager.mark_exhausted(current_token, reason=f"Failed ({err_msg[:40]})")
+                    if sheets.is_connected:
+                        sheets.sync_token_records(token_manager.export_sheet_rows())
+                    print("  -> Switching to next highest-balance token in pool...")
+                    time.sleep(1)
+                else:
+                    # Non-token related error
+                    print(f"  -> Skipping query '{query}' due to unexpected error.")
+                    break
 
         total_posts_found += len(query_posts)
         print(f"  -> Scraped {len(query_posts)} posts.")
@@ -256,7 +275,9 @@ def run_pipeline(limit_queries: int = 0):
 
     sheets.append_daily_analytics(analytics_record)
 
-    # 7. Final Token Pool Sync to Google Sheet
+    # 7. Final Live Token Pool Balance Sync to Google Sheet
+    print("\n[TOKEN POOL] Running final live balance sync across all tokens...")
+    token_manager.sync_live_balances()
     if sheets.is_connected:
         sheets.sync_token_records(token_manager.export_sheet_rows())
 
