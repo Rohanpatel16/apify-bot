@@ -1,10 +1,7 @@
 name: 24H LinkedIn Lead Extractor & Analytics
 
 on:
-  schedule:
-    # Runs every 24 hours at 06:00 UTC (11:30 AM IST)
-    - cron: '0 6 * * *'
-  workflow_dispatch: # Allows manual trigger from GitHub Actions UI
+  workflow_dispatch: # Manual one-click execution from GitHub Actions UI
 
 jobs:
   scrape-and-sync:
@@ -27,7 +24,6 @@ jobs:
 
       - name: Execute Lead Extraction Pipeline
         env:
-          # Exactly 2 GitHub Secrets needed:
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
