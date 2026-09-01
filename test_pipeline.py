@@ -12,7 +12,7 @@ if sys.platform == "win32":
 from dotenv import load_dotenv
 from apify_client import ApifyClient
 from sheets_manager import SheetsManager
-from token_manager import TokenManager
+from token_manager import TokenManager, safe_get
 from email_extractor import LeadEmailExtractor
 
 load_dotenv()
@@ -43,6 +43,9 @@ def run_live_test():
     print(f"  [OK] Successfully connected to Google Sheet: '{sheets.spreadsheet.title}'")
 
     # Verify Tabs
+    queries = sheets.load_queries(['"Hiring" AND "Bengaluru" AND "@"'])
+    print(f"  [OK] 'Queries' tab: {len(queries)} enabled search queries loaded.")
+
     settings = sheets.load_settings()
     print(f"  [OK] 'Settings' tab: {len(settings['blocked_domains'])} blocked domains, {len(settings['rejection_keywords'])} keywords loaded.")
 
@@ -85,7 +88,7 @@ def run_live_test():
 
     # 3. Test 1 Query with minimal posts (max 5 posts to minimize compute cost)
     print("\n--- 3. Testing Live Scraper Execution (Single Query, Max 5 Posts) ---")
-    test_query = '"Hiring" AND "Bengaluru" AND "@"'
+    test_query = queries[0] if queries else '"Hiring" AND "Bengaluru" AND "@"'
     client = ApifyClient(best_token_record["api_token"])
     
     run_input = {
@@ -101,7 +104,7 @@ def run_live_test():
     try:
         print(f"  Triggering test query: {test_query} (max 5 posts)...")
         run = client.actor("buIWk2uOUzTmcLsuB").call(run_input=run_input)
-        dataset_id = run.get("defaultDatasetId")
+        dataset_id = safe_get(run, "defaultDatasetId") or safe_get(run, "default_dataset_id")
         items = list(client.dataset(dataset_id).iterate_items()) if dataset_id else []
         print(f"  [OK] Successfully scraped {len(items)} test post(s) from LinkedIn in real-time.")
     except Exception as e:
@@ -127,7 +130,7 @@ def run_live_test():
     # 5. Test Google Sheet Sync & Safe Appending
     if test_leads:
         print("\n--- 5. Testing Google Sheet Leads Append ---")
-        sheets.append_leads(test_leads[:2]) # Append at most 2 for test
+        sheets.append_leads(test_leads[:2])
         print("  [OK] Successfully appended test lead(s) to 'Leads Database'.")
 
     # Update token balances in sheet
@@ -135,7 +138,7 @@ def run_live_test():
     print("  [OK] Successfully synced token pool statuses to 'Apify_Tokens'.")
 
     print("\n" + "=" * 80)
-    print(" [ALL SYSTEMS VERIFIED & OPERATIONAL] Ready for full 62-query automated runs!")
+    print(" [ALL SYSTEMS VERIFIED & OPERATIONAL] Ready for full automated runs!")
     print("=" * 80)
 
 

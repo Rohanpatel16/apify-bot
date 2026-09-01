@@ -4,9 +4,35 @@ from typing import Dict, List, Optional
 from apify_client import ApifyClient
 
 
+def safe_get(obj, key, default=None):
+    """
+    Safely retrieves a value whether obj is a dictionary or a typed object/dataclass
+    (e.g., UserPrivateInfo, ActorRun, etc.), checking both camelCase and snake_case.
+    """
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        if key in obj:
+            return obj[key]
+        snake_key = ''.join(['_' + c.lower() if c.isupper() else c for c in key]).lstrip('_')
+        return obj.get(snake_key, default)
+    
+    # Object attribute lookup
+    if hasattr(obj, key):
+        val = getattr(obj, key)
+        return val if val is not None else default
+    snake_key = ''.join(['_' + c.lower() if c.isupper() else c for c in key]).lstrip('_')
+    if hasattr(obj, snake_key):
+        val = getattr(obj, snake_key)
+        return val if val is not None else default
+    if hasattr(obj, "__dict__"):
+        return obj.__dict__.get(key, obj.__dict__.get(snake_key, default))
+    return default
+
+
 class TokenManager:
     """
-    Manages a pool of up to 50 Apify API tokens.
+    Manages a pool of unlimited Apify API tokens.
     Handles live balance queries, highest-balance selection, failover rotation,
     and status tracking (including password preservation).
     """
@@ -58,14 +84,18 @@ class TokenManager:
                 client = ApifyClient(token)
                 user_info = client.user("me").get()
                 if user_info:
-                    plan = user_info.get("plan") or {}
-                    usd_limit = plan.get("monthlyUsageLimitUsd", 5.0) or 5.0
-                    usd_used = user_info.get("usage", {}).get("currentBillingCycle", {}).get("monthlyUsageUsd", 0.0) or 0.0
+                    plan = safe_get(user_info, "plan", {}) or {}
+                    usd_limit = safe_get(plan, "monthlyUsageLimitUsd", 5.0) or 5.0
+                    
+                    usage = safe_get(user_info, "usage", {}) or {}
+                    current_cycle = safe_get(usage, "currentBillingCycle", {}) or {}
+                    usd_used = safe_get(current_cycle, "monthlyUsageUsd", 0.0) or 0.0
+                    
                     rem_balance = max(0.0, float(usd_limit) - float(usd_used))
                     
                     record["available_balance_usd"] = round(rem_balance, 2)
                     record["status"] = "ACTIVE"
-                    record["notes"] = f"Plan: {plan.get('name', 'Free')} (Healthy)"
+                    record["notes"] = f"Plan: {safe_get(plan, 'name', 'Free')} (Healthy)"
                     print(f"  [OK] {record['account_name']}: ${record['available_balance_usd']:.2f} available")
             except Exception as e:
                 err_str = str(e)

@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from apify_client import ApifyClient
 
 from email_extractor import LeadEmailExtractor
-from token_manager import TokenManager
+from token_manager import TokenManager, safe_get
 from sheets_manager import SheetsManager
 
 load_dotenv()
@@ -201,10 +201,10 @@ def run_pipeline(limit_queries: int = 0):
         query_posts = []
         try:
             run = client.actor(ACTOR_ID).call(run_input=run_input)
-            dataset_id = run.get("defaultDatasetId")
+            dataset_id = safe_get(run, "defaultDatasetId") or safe_get(run, "default_dataset_id")
             
             # Record estimated compute cost
-            usage_usd = run.get("usageTotalUsd", 0.01) or 0.01
+            usage_usd = float(safe_get(run, "usageTotalUsd", 0.01) or safe_get(run, "usage_total_usd", 0.01) or 0.01)
             total_cost_usd += usage_usd
             best_token_record["available_balance_usd"] = max(0.0, best_token_record["available_balance_usd"] - usage_usd)
 
