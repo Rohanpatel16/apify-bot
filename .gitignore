@@ -1,0 +1,50 @@
+# Environment and secrets
+.env
+*.env
+*.pem
+credentials.json
+service_account.json
+
+# Local archive and data directory (never commit to git)
+_local_archive/
+local_data/
+temp_data/
+
+# Data outputs and test dumps
+*.csv
+*.json
+!sample_response.json
+!plugin.json
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE & OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
