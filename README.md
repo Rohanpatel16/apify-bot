@@ -8,10 +8,12 @@ Automated system that runs on **GitHub Actions** to scrape LinkedIn hiring posts
 
 ```
 ├── .github/workflows/
-│   ├── scrape_daily.yml      # Main 24H lead extractor workflow (Manual execution)
-│   └── test_pipeline.yml     # Lightweight integration test workflow (Low credit usage)
-├── Code.gs                   # Google Apps Script to auto-create & format all 5 sheets (Safe-Sync)
-├── main.py                   # Main pipeline orchestrator
+│   ├── scrape_daily.yml           # Main 24H lead extractor workflow (Manual execution)
+│   ├── update_token_balances.yml  # Update all Apify token balances in Google Sheet only (Zero scraping cost)
+│   └── test_pipeline.yml          # Lightweight integration test workflow (Low credit usage)
+├── Code.gs                        # Google Apps Script to auto-create & format all 5 sheets (Safe-Sync)
+├── main.py                        # Main pipeline orchestrator
+├── sync_balances.py               # Standalone script to refresh all token balances in Google Sheets
 ├── email_extractor.py        # 5-column lead extractor & 4-stage filter engine
 ├── token_manager.py          # Multi-token pool manager with live balance tracking & failover
 ├── sheets_manager.py         # Google Sheets synchronization engine (non-destructive, column-safe)
