@@ -30,7 +30,7 @@ load_dotenv()
 ACTOR_ID = "buIWk2uOUzTmcLsuB"
 POSTED_LIMIT = "24h"
 MAX_POSTS_PER_QUERY = 1000
-DELAY_BETWEEN_RUNS_SECONDS = 2
+DELAY_BETWEEN_RUNS_SECONDS = 1
 
 # 62 Search Queries for major Indian hiring hubs
 SEARCH_QUERIES = [
@@ -220,6 +220,14 @@ def run_pipeline(limit_queries: int = 0):
                     query_posts = list(client.dataset(dataset_id).iterate_items())
 
                 query_success = True
+
+                # Evaluate live remaining balance from /limits API and enforce viability
+                token_manager.sync_single_token_balance(current_token)
+                # Enforce max 2 runs per token rotation limit
+                token_manager.record_run_completion(current_token)
+                # Sync updated token balances to Google Sheets
+                if sheets.is_connected:
+                    sheets.sync_token_records(token_manager.export_sheet_rows())
 
             except Exception as e:
                 err_msg = str(e)
