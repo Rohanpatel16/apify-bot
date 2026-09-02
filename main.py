@@ -9,6 +9,10 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+import logging
+logging.getLogger("apify_client").setLevel(logging.WARNING)
+logging.getLogger("apify").setLevel(logging.WARNING)
+
 import time
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -203,10 +207,11 @@ def run_pipeline(limit_queries: int = 0):
             client = ApifyClient(current_token)
 
             try:
-                run = client.actor(ACTOR_ID).call(run_input=run_input)
+                # logger=None silences the 62k lines of raw actor post logs in terminal
+                run = client.actor(ACTOR_ID).call(run_input=run_input, logger=None)
                 dataset_id = safe_get(run, "defaultDatasetId") or safe_get(run, "default_dataset_id")
                 
-                # Record estimated compute cost
+                # Record compute cost
                 usage_usd = float(safe_get(run, "usageTotalUsd", 0.01) or safe_get(run, "usage_total_usd", 0.01) or 0.01)
                 total_cost_usd += usage_usd
                 best_token_record["available_balance_usd"] = max(0.0, best_token_record["available_balance_usd"] - usage_usd)
@@ -223,7 +228,7 @@ def run_pipeline(limit_queries: int = 0):
                 # Check for payment/quota/permission/rate-limit errors
                 is_exhausted_or_forbidden = (
                     any(code in err_msg for code in ["401", "402", "403", "429"]) or
-                    any(k in err_msg.lower() for k in ["quota", "limit", "payment", "credit", "balance", "forbidden", "unauthorized", "exhausted"])
+                    any(k in err_msg.lower() for k in ["quota", "limit", "payment", "credit", "balance", "forbidden", "unauthorized", "exhausted", "exceed"])
                 )
 
                 if is_exhausted_or_forbidden:
@@ -233,12 +238,10 @@ def run_pipeline(limit_queries: int = 0):
                     print("  -> Switching to next highest-balance token in pool...")
                     time.sleep(1)
                 else:
-                    # Non-token related error
                     print(f"  -> Skipping query '{query}' due to unexpected error.")
                     break
 
         total_posts_found += len(query_posts)
-        print(f"  -> Scraped {len(query_posts)} posts.")
 
         # Extract & Filter leads into 5 columns
         query_leads = []
@@ -246,12 +249,12 @@ def run_pipeline(limit_queries: int = 0):
             leads = extractor.extract_lead_from_post(post, query)
             query_leads.extend(leads)
 
+        new_leads_count = len(query_leads)
         if query_leads:
             sheets.append_leads(query_leads)
-            total_leads_added += len(query_leads)
-            print(f"  -> Extracted & Appended {len(query_leads)} fresh leads to Google Sheet (Total: {total_leads_added})")
-        else:
-            print("  -> 0 new fresh leads (filtered or already exists in Leads Database).")
+            total_leads_added += new_leads_count
+
+        print(f"  ✓ [{idx}/{len(queries_to_run)}] Scraped: {len(query_posts)} posts | +{new_leads_count} fresh leads (Total Leads: {total_leads_added}) | Cost: ${usage_usd:.4f}")
 
         if idx < len(queries_to_run):
             time.sleep(DELAY_BETWEEN_RUNS_SECONDS)

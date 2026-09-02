@@ -103,7 +103,7 @@ def run_live_test():
 
     try:
         print(f"  Triggering test query: {test_query} (max 5 posts)...")
-        run = client.actor("buIWk2uOUzTmcLsuB").call(run_input=run_input)
+        run = client.actor("buIWk2uOUzTmcLsuB").call(run_input=run_input, logger=None)
         dataset_id = safe_get(run, "defaultDatasetId") or safe_get(run, "default_dataset_id")
         items = list(client.dataset(dataset_id).iterate_items()) if dataset_id else []
         print(f"  [OK] Successfully scraped {len(items)} test post(s) from LinkedIn in real-time.")
