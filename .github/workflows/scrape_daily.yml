@@ -7,11 +7,6 @@ on:
         description: 'Number of queries to run (0 = all queries in sheet)'
         required: false
         default: '0'
-      sync_tokens_only:
-        description: 'Update all Apify token balances in Google Sheet only (do not scrape)'
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   scrape-and-sync:
@@ -38,7 +33,6 @@ jobs:
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           LIMIT_QUERIES: ${{ github.event.inputs.limit_queries || '0' }}
-          SYNC_TOKENS_ONLY: ${{ github.event.inputs.sync_tokens_only && '1' || '0' }}
         run: |
           python main.py
 

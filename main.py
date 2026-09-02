@@ -174,9 +174,8 @@ def run_pipeline(limit_queries: int = 0):
     ]
     print(f"  ✓ {len(viable_tokens)}/{len(token_manager.tokens)} token(s) are ACTIVE & VIABLE (>= ${token_manager.min_viable_balance:.2f} balance).")
 
-    # If user just wants to refresh all token balances in Google Sheets without scraping
-    if os.getenv("SYNC_TOKENS_ONLY", "0").lower() in ("1", "true", "yes"):
-        print("\n[SYNC ONLY] Completed token balance audit and sheet sync. Exiting.")
+    if not viable_tokens:
+        print("  [CRITICAL ERROR] No viable tokens with balance >= $0.25 found! Halting pipeline.")
         return
 
     # 6. Load Active Search Queries from 'Queries' Google Sheet tab
