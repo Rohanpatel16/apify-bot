@@ -159,12 +159,27 @@ def run_pipeline(limit_queries: int = 0):
             "notes": "Default Seed Token",
         }]
 
-    # Sync live balances for all active tokens from Apify API
+    # 5. PRE-RUN TOKEN AUDIT: Refresh live balance for every token before any query runs
+    print("\n" + "=" * 80)
+    print(" [PRE-RUN TOKEN AUDIT] Updating live Apify balances for all tokens...")
+    print("=" * 80)
     token_manager.sync_live_balances()
     if sheets.is_connected:
         sheets.sync_token_records(token_manager.export_sheet_rows())
+        print("  ✓ Google Sheet 'Apify_Tokens' tab is 100% up to date with live balances.")
 
-    # 5. Load Active Search Queries from 'Queries' Google Sheet tab
+    viable_tokens = [
+        t for t in token_manager.tokens
+        if t["status"] == "ACTIVE" and t.get("available_balance_usd", 0.0) >= token_manager.min_viable_balance
+    ]
+    print(f"  ✓ {len(viable_tokens)}/{len(token_manager.tokens)} token(s) are ACTIVE & VIABLE (>= ${token_manager.min_viable_balance:.2f} balance).")
+
+    # If user just wants to refresh all token balances in Google Sheets without scraping
+    if os.getenv("SYNC_TOKENS_ONLY", "0").lower() in ("1", "true", "yes"):
+        print("\n[SYNC ONLY] Completed token balance audit and sheet sync. Exiting.")
+        return
+
+    # 6. Load Active Search Queries from 'Queries' Google Sheet tab
     active_queries = sheets.load_queries(default_queries=SEARCH_QUERIES)
     queries_to_run = active_queries[:limit_queries] if limit_queries > 0 else active_queries
     print(f"\n[PIPELINE] Executing {len(queries_to_run)} active search queries (24H window)...")

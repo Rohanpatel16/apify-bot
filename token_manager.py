@@ -49,8 +49,9 @@ class TokenManager:
     - Preserves passwords and account metadata safely.
     """
 
-    DEFAULT_MIN_VIABLE_BALANCE = 0.03  # Minimum USD required for 1 full search run (~$0.02 - $0.03)
-    DEFAULT_MAX_RUNS_PER_TOKEN = 2     # Max runs per token before rotating to next in pool
+    # Set to 0.25 USD based on live analytics ($0.2420 actual average cost per query)
+    DEFAULT_MIN_VIABLE_BALANCE = float(os.getenv("MIN_VIABLE_BALANCE", "0.25"))
+    DEFAULT_MAX_RUNS_PER_TOKEN = int(os.getenv("MAX_RUNS_PER_TOKEN", "2"))
 
     def __init__(
         self,
