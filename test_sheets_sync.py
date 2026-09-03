@@ -94,7 +94,7 @@ class TestSheetsManagerSync(unittest.TestCase):
         self.assertIn("hr", settings["rejection_keywords"])
     def test_lead_extractor_date(self):
         from email_extractor import LeadEmailExtractor
-        extractor = LeadEmailExtractor()
+        extractor = LeadEmailExtractor(rejection_keywords={"hr"})
         post_item = {
             "content": "Looking for frontend developer. Reach out to john.doe@goodcompany.com or hr@goodcompany.com",
             "author": {"name": "Test Recruiter"},

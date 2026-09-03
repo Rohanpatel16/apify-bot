@@ -7,11 +7,12 @@ class LeadEmailExtractor:
     """
     Extracts, normalizes, filters, and deduplicates recruiter/business leads
     into a clean 6-column CRM format: [Email, Domain, Phone Number, Name, Query, Date].
-    - Filters out generic mailboxes (hiring@, hr@, cv@, jobs@, info@, etc.)
-    - Filters out HR, staffing, consultancy, and recruitment agency domains.
-    - Filters out consumer/free email providers (Gmail, Yahoo, Zoho, etc.) and typos.
-    - Filters out institutional suffixes (.edu, .edu.in, .ac.in, .gov, .org, etc.)
-    - Sanitizes phone numbers to prevent Google Sheets #ERROR! formula bugs.
+    
+    100% Dynamic Rules (Loaded directly from Google Sheets 'Settings' tab):
+    - Blocked Domains: loaded from 'Blocked Domains' column
+    - Rejection Keywords: loaded from 'Rejection Keywords' column (checked in both username and domain)
+    - Blocked Suffixes: loaded from 'Blocked Suffixes' column
+    - Phone numbers are sanitized to prevent Google Sheets '#ERROR!' formula errors.
     """
 
     # RFC-compliant email pattern
@@ -23,26 +24,6 @@ class LeadEmailExtractor:
     PHONE_REGEX = re.compile(
         r"(?:\+91[\s\-]?)?(?:[6-9]\d{9}|[6-9]\d{4}[\s\-]?\d{5})|(?:\+\d{1,3}[\s\-]?)?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{4}"
     )
-
-    # Common generic inbox prefixes that should never be treated as direct decision makers
-    GENERIC_INBOX_STEMS = {
-        "hr", "hiring", "hire", "recruit", "recruiter", "recruitment", "recruiting",
-        "job", "jobs", "career", "careers", "carrer",
-        "cv", "resume", "resumes", "placement", "placements", "placementcell",
-        "info", "enquiry", "inquiry", "hello", "contact", "connect", "connnect", "reach", "reachus",
-        "join", "joinus", "apply", "support", "help", "admin", "sales", "official",
-        "feedback", "marketing", "business", "operations", "lead", "partners"
-    }
-
-    # Free consumer email patterns (including common typos)
-    FREE_PROVIDER_PATTERNS = [
-        r"^(?:.*\.)?gmail\.", r"^(?:.*\.)?gmai\.", r"^(?:.*\.)?gamil\.",
-        r"^(?:.*\.)?yahoo\.", r"^(?:.*\.)?ymail\.",
-        r"^(?:.*\.)?hotmail\.", r"^(?:.*\.)?outlook\.",
-        r"^(?:.*\.)?zoho\.", r"^(?:.*\.)?zohomail\.",
-        r"^(?:.*\.)?proton(?:mail)?\.", r"^(?:.*\.)?rediffmail\.",
-        r"^(?:.*\.)?icloud\.", r"^(?:.*\.)?aol\.", r"^(?:.*\.)?live\.", r"^(?:.*\.)?msn\."
-    ]
 
     def __init__(
         self,
@@ -68,7 +49,7 @@ class LeadEmailExtractor:
         name = author.get("name") or post_item.get("authorName") or "Recruiter"
         name = name.strip()
 
-        # 2. Extract Phone Number (safely sanitized for Google Sheets)
+        # 2. Extract Phone Number (sanitized with leading quote to prevent Google Sheets #ERROR! formula evaluation)
         phone = ""
         phone_matches = self.PHONE_REGEX.findall(content)
         if phone_matches:
@@ -76,7 +57,6 @@ class LeadEmailExtractor:
                 clean_digits = re.sub(r"\D", "", raw_phone)
                 if len(clean_digits) >= 10:
                     clean_str = raw_phone.strip().lstrip("-").strip()
-                    # Prefix with single quote so Google Sheets treats it as plain text instead of a formula (#ERROR!)
                     phone = f"'{clean_str}" if clean_str else ""
                     break
 
@@ -101,7 +81,7 @@ class LeadEmailExtractor:
             if not clean_email:
                 continue
 
-            # Validate against filter rules
+            # Validate against filter rules loaded dynamically from Google Sheets
             is_valid, reason = self.validate_email(clean_email)
             if not is_valid:
                 continue
@@ -128,11 +108,10 @@ class LeadEmailExtractor:
 
     def validate_email(self, email: str) -> Tuple[bool, str]:
         """
-        Validates email against:
-        1. Blocked Domains (exact or consumer pattern, e.g. gmail, yahoo, zoho)
-        2. Blocked Suffixes (e.g. .gov, .edu, .edu.in, .ac.in, .org, .xyz)
-        3. Rejection Keywords in username (e.g. hr@, careers@, jobs@, hiring@, info@, cv@)
-        4. Rejection Keywords in domain (e.g. recruitmenthub365.com, placewellcareers.com, tgcstaffing.com, goldenbrickshr.com)
+        Validates email dynamically against lists loaded from Google Sheets Settings tab:
+        1. Blocked Domains: checks if domain matches any blocked domain entry.
+        2. Blocked Suffixes: checks if domain ends with or contains any blocked suffix.
+        3. Rejection Keywords: checks if any keyword appears in the username OR the domain.
         """
         if "@" not in email:
             return False, "Malformed email"
@@ -140,17 +119,27 @@ class LeadEmailExtractor:
         username, domain = email.split("@", 1)
         username = username.lower()
         domain = domain.lower()
+        domain_base = domain.split(".")[0]
 
-        # 1. Check Blocked Domains (exact match or consumer email regex)
-        if domain in self.blocked_domains:
-            return False, f"Blocked domain: {domain}"
+        # 1. Check Blocked Domains (Dynamic from Google Sheet)
+        for bd in self.blocked_domains:
+            if not bd:
+                continue
+            if "." in bd:
+                if domain == bd or domain.endswith("." + bd):
+                    return False, f"Blocked domain: {domain}"
+                # Also match root provider name from sheet to catch typos/aliases (e.g. gmail.com catches gmail.con)
+                root_name = bd.split(".")[0]
+                if len(root_name) >= 4 and root_name in domain_base:
+                    return False, f"Blocked provider domain: {domain}"
+            else:
+                # If entered without dot (e.g. gmail, zoho, yahoo)
+                if bd in domain_base:
+                    return False, f"Blocked domain: {domain}"
 
-        if any(re.search(p, domain) for p in self.FREE_PROVIDER_PATTERNS):
-            return False, f"Free/consumer email domain: {domain}"
-
-        # 2. Check Blocked Suffixes (.edu, .edu.in, .ac.in, .gov, .org, .xyz, etc.)
+        # 2. Check Blocked Suffixes (Dynamic from Google Sheet)
         for suffix in self.blocked_suffixes:
-            s = suffix.lower().strip()
+            s = suffix.strip()
             if not s:
                 continue
             if not s.startswith("."):
@@ -158,61 +147,56 @@ class LeadEmailExtractor:
             if domain.endswith(s) or f"{s}." in domain:
                 return False, f"Blocked suffix: {suffix}"
 
-        # 3. Check Generic/Bot Mailbox Prefixes in Username
-        user_root = re.split(r"[._\-0-9]", username)[0]
-        if username in self.GENERIC_INBOX_STEMS or user_root in self.GENERIC_INBOX_STEMS:
-            return False, f"Generic inbox prefix: '{username}'"
-
+        # 3. Check Rejection Keywords in BOTH Username AND Domain (Dynamic from Google Sheet)
         for kw in self.rejection_keywords:
-            kw = kw.strip().lower()
-            if kw and kw in username:
-                return False, f"Rejection keyword '{kw}' in username"
-
-        # 4. Check Rejection Keywords in Domain (e.g. recruitment, staffing, careers, consultancies)
-        dom_name = domain.split(".")[0]
-        for kw in self.rejection_keywords:
-            kw = kw.strip().lower()
+            kw = kw.strip()
             if not kw:
                 continue
 
+            # A) Match in Username (e.g. hr@, careers@, jobs@, contact@, info@, sales@)
+            if kw in username:
+                return False, f"Rejection keyword '{kw}' in username"
+            # Stem matching: if keyword ends in 'e' (e.g. hire -> hiring)
+            if kw.endswith("e") and len(kw) > 3 and kw[:-1] in username:
+                return False, f"Rejection keyword '{kw}' in username"
+            # Stem matching: if keyword ends in 's' (e.g. jobs -> job, careers -> career)
+            if kw.endswith("s") and len(kw) > 3 and kw[:-1] == username:
+                return False, f"Rejection keyword '{kw}' in username"
+
+            # B) Match in Domain (e.g. recruitmenthub365.com, placewellcareers.com, tgcstaffing.com, goldenbrickshr.com)
             if kw == "hr":
-                # Smart HR detection for recruitment firms (e.g. goldenbrickshr, hrbx, delighthr, greathrsol)
+                # Smart HR detection in domain (e.g. goldenbrickshr, hrbx, delighthr, greathrsol, hr-central)
+                # while avoiding false positives on common words (chrome, thread, anthropic, shri)
                 hr_patterns = [
-                    r"(^|[-_.])hr",                           # Starts with hr or after hyphen (hrbx, hr-solutions)
-                    r"hr([-_.0-9]|$)",                        # Ends with hr or before separator (delighthr, cielhr, k9hr)
+                    r"(^|[-_.])hr",
+                    r"hr([-_.0-9]|$)",
                     r"hr(sol|solutions|consult|services|work|works|group|corp|tech|india|global|net|hub|world)",
                     r"(great|delight|golden|ensure|converse|spring|bean|ciel|ambience|realworld|urban|teamup|mitr)hr",
                 ]
-                if any(re.search(p, dom_name) for p in hr_patterns):
-                    if not any(safe in dom_name for safe in ["chrome", "thread", "anthropic", "shroff", "shri"]):
-                        return False, "HR/Staffing firm in domain"
-
+                if any(re.search(p, domain_base) for p in hr_patterns):
+                    if not any(safe in domain_base for safe in ["chrome", "thread", "anthropic", "shroff", "shri"]):
+                        return False, f"Rejection keyword '{kw}' in domain"
             elif kw in ("career", "careers"):
-                if "career" in dom_name:
+                if "career" in domain_base:
                     return False, f"Rejection keyword '{kw}' in domain"
-
-            elif kw in ("consultancy", "consulting"):
-                if "consult" in dom_name:
+            elif kw in ("consultancy", "consulting", "consultant"):
+                if "consult" in domain_base:
                     return False, f"Rejection keyword '{kw}' in domain"
-
             elif kw in ("jobs", "job"):
-                if "job" in dom_name:
+                if "job" in domain_base:
                     return False, f"Rejection keyword '{kw}' in domain"
-
-            elif kw in ("recruit", "recruitment"):
-                if "recruit" in dom_name:
+            elif kw in ("recruit", "recruitment", "recruiter"):
+                if "recruit" in domain_base:
                     return False, f"Rejection keyword '{kw}' in domain"
-
             elif kw in ("hire", "hiring"):
-                if "hire" in dom_name or "hyre" in dom_name:
+                if "hire" in domain_base or "hyre" in domain_base:
                     return False, f"Rejection keyword '{kw}' in domain"
-
             elif kw == "info":
-                if "infosys" not in dom_name and "info" in dom_name:
+                if "infosys" not in domain_base and "info" in domain_base:
                     return False, f"Rejection keyword '{kw}' in domain"
-
-            elif kw in dom_name:
-                return False, f"Rejection keyword '{kw}' in domain"
+            else:
+                if kw in domain_base:
+                    return False, f"Rejection keyword '{kw}' in domain"
 
         return True, "Valid"
 
