@@ -38,7 +38,7 @@ The Google Apps Script (`Code.gs`) is designed to be **100% non-destructive**:
 3. Copy and paste the entire content of [`Code.gs`](file:///d:/Codinf%20projets/apify-bot-/Code.gs) into the script editor.
 4. Click **Save (Ctrl+S)**, select the `safeSyncSheets` function, and click **Run**.
 5. Your Google Sheet will have all 5 styled tabs:
-   - **`Leads Database`**: 5 core columns (`Email`, `Domain`, `Phone Number`, `Name`, `Query`) + any custom columns you add.
+   - **`Leads Database`**: 6 core columns (`Email`, `Domain`, `Phone Number`, `Name`, `Query`, `Date`) + any custom columns you add.
    - **`Queries`**: Search queries managed directly in the sheet with `Enabled` toggles (`TRUE`/`FALSE`).
    - **`Settings`**: Configurable filter lists for *Blocked Domains*, *Rejection Keywords*, and *Blocked Suffixes*.
    - **`Apify_Tokens`**: Unlimited account slots with `api_token`, `account_name`, `password`, `status`, `available_balance_usd`, `last_used_at`, and `notes`.

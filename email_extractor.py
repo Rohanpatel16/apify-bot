@@ -1,11 +1,12 @@
 import re
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set, Tuple
 
 
 class LeadEmailExtractor:
     """
     Extracts, normalizes, filters, and deduplicates recruiter/business leads
-    into a strict 5-column format: [Email, Domain, Phone Number, Name, Query].
+    into a clean 6-column CRM format: [Email, Domain, Phone Number, Name, Query, Date].
     """
 
     # RFC-compliant email pattern
@@ -56,6 +57,18 @@ class LeadEmailExtractor:
         # 3. Extract Emails from post body
         extracted_emails = self.EMAIL_REGEX.findall(content)
         
+        # 4. Extract Post Date
+        raw_date = post_item.get("postedDate") or post_item.get("postedAt") or post_item.get("date") or post_item.get("createdAt") or ""
+        if isinstance(raw_date, dict):
+            raw_date = raw_date.get("date") or raw_date.get("timestamp") or ""
+
+        if raw_date and "T" in str(raw_date):
+            lead_date = str(raw_date).split("T")[0]
+        elif raw_date and len(str(raw_date)) >= 10 and str(raw_date)[:4].isdigit():
+            lead_date = str(raw_date)[:10]
+        else:
+            lead_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
         valid_leads = []
         for raw_email in extracted_emails:
             clean_email = self._clean_email(raw_email)
@@ -82,6 +95,7 @@ class LeadEmailExtractor:
                 "Phone Number": phone,
                 "Name": name,
                 "Query": query,
+                "Date": lead_date,
             })
 
         return valid_leads
