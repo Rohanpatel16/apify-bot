@@ -96,14 +96,25 @@ class TestSheetsManagerSync(unittest.TestCase):
         from email_extractor import LeadEmailExtractor
         extractor = LeadEmailExtractor()
         post_item = {
-            "content": "Looking for frontend developer. Send CV to hr@goodcompany.com or careers@goodcompany.com",
+            "content": "Looking for frontend developer. Reach out to john.doe@goodcompany.com or hr@goodcompany.com",
             "author": {"name": "Test Recruiter"},
             "postedAt": {"timestamp": 1788256134614, "date": "2026-09-01T09:48:54.614Z"}
         }
         leads = extractor.extract_lead_from_post(post_item, "Hiring Test")
-        self.assertEqual(len(leads), 2)
-        self.assertEqual(leads[0]["Email"], "hr@goodcompany.com")
+        # hr@goodcompany.com is filtered out as generic; john.doe@goodcompany.com is preserved
+        self.assertEqual(len(leads), 1)
+        self.assertEqual(leads[0]["Email"], "john.doe@goodcompany.com")
         self.assertEqual(leads[0]["Date"], "2026-09-01")
+
+    def test_domain_agency_keywords(self):
+        from email_extractor import LeadEmailExtractor
+        extractor = LeadEmailExtractor(rejection_keywords={"staffing", "career", "recruitment", "hr"})
+        self.assertFalse(extractor.validate_email("user@tgcstaffing.com")[0])
+        self.assertFalse(extractor.validate_email("lead@placewellcareers.com")[0])
+        self.assertFalse(extractor.validate_email("candidate@recruitmenthub365.com")[0])
+        self.assertFalse(extractor.validate_email("alex@goldenbrickshr.com")[0])
+        self.assertTrue(extractor.validate_email("priya@infosys.com")[0])
+        self.assertTrue(extractor.validate_email("rahul@tajhotels.com")[0])
 
     def test_token_manager_export(self):
         from token_manager import TokenManager

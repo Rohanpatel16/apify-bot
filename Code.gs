@@ -227,10 +227,10 @@ function safeSyncSheets() {
     var defaultRejectionKeywords = [
       'consultancy', 'hr', 'recruitment', 'career', 'careers', 'contact',
       'hire', 'support', 'jobs', 'staffing', 'talent', 'apply', 'info',
-      'sales', 'admin', 'help', 'team', 'service', 'inquiry'
+      'sales', 'admin', 'help', 'team', 'service', 'inquiry', 'manpower'
     ];
     var defaultBlockedSuffixes = [
-      '.edu', '.ac.in', '.gov', '.mil', '.org', '.int', '.uk', '.ca', '.au',
+      '.edu', '.edu.in', '.ac.in', '.gov', '.mil', '.org', '.org.in', '.int', '.uk', '.ca', '.au',
       '.cn', '.jp', '.de', '.fr', '.it', '.ru', '.br', '.xyz', '.info', '.biz',
       '.name', '.pro', '.aero', '.coop', '.museum', '.jobs', '.mobi', '.tel',
       '.asia', '.post', '.cat', '.travel', '.xxx', '.tv', '.me', '.cc', '.ws',
